@@ -1,5 +1,6 @@
 from pieces import Piece, PieceType, Color
 
+
 class Board:
     def __init__(self):
         self.grid = [[None for _ in range(8)] for _ in range(8)]
@@ -53,18 +54,88 @@ class Board:
                 piece = self.get_piece(row, col)
                 if piece and piece.piece_type == PieceType.KING and piece.color == color:
                     return row, col
-        raise ValueError(f"Nu am gasit regele pentru {color}.")
+        raise ValueError(f"King not found for {color}")
+
+    def get_positions_of_color(self, color):
+        positions = []
+        for r in range(8):
+            for c in range(8):
+                piece = self.get_piece(r, c)
+                if piece and piece.color == color:
+                    positions.append((r, c))
+        return positions
+
+    def _attack_squares(self, row, col):
+        piece = self.get_piece(row, col)
+        if piece is None:
+            return []
+
+        pt = piece.piece_type
+        color = piece.color
+
+        if pt == PieceType.PAWN:
+            direction = 1 if color == Color.WHITE else -1
+            out = []
+            r = row + direction
+            for dc in (-1, 1):
+                c = col + dc
+                if self.in_bounds(r, c):
+                    out.append((r, c))
+            return out
+
+        if pt == PieceType.KNIGHT:
+            out = []
+            offsets = [
+                (2, 1), (2, -1), (-2, 1), (-2, -1),
+                (1, 2), (1, -2), (-1, 2), (-1, -2),
+            ]
+            for dr, dc in offsets:
+                r, c = row + dr, col + dc
+                if self.in_bounds(r, c):
+                    out.append((r, c))
+            return out
+
+        if pt == PieceType.KING:
+            out = []
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    r, c = row + dr, col + dc
+                    if self.in_bounds(r, c):
+                        out.append((r, c))
+            return out
+
+        directions = []
+        if pt == PieceType.ROOK:
+            directions = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        elif pt == PieceType.BISHOP:
+            directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+        elif pt == PieceType.QUEEN:
+            directions = [
+                (1, 0), (-1, 0), (0, 1), (0, -1),
+                (1, 1), (1, -1), (-1, 1), (-1, -1),
+            ]
+
+        out = []
+        for dr, dc in directions:
+            r, c = row + dr, col + dc
+            while self.in_bounds(r, c):
+                out.append((r, c))
+                if not self.is_empty(r, c):
+                    break
+                r += dr
+                c += dc
+        return out
 
     def is_square_attacked(self, row, col, by_color):
         for r in range(8):
             for c in range(8):
                 piece = self.get_piece(r, c)
                 if piece and piece.color == by_color:
-                    moves = self.get_legal_moves(r, c)
-                    if (row, col) in moves:
+                    if (row, col) in self._attack_squares(r, c):
                         return True
         return False
-
 
     def __str__(self):
         lines = []
@@ -84,15 +155,15 @@ class Board:
 
         if piece.piece_type == PieceType.ROOK:
             return self._rook_moves(row, col)
-        elif piece.piece_type == PieceType.BISHOP:
+        if piece.piece_type == PieceType.BISHOP:
             return self._bishop_moves(row, col)
-        elif piece.piece_type == PieceType.QUEEN:
+        if piece.piece_type == PieceType.QUEEN:
             return self._queen_moves(row, col)
-        elif piece.piece_type == PieceType.KNIGHT:
+        if piece.piece_type == PieceType.KNIGHT:
             return self._knight_moves(row, col)
-        elif piece.piece_type == PieceType.KING:
+        if piece.piece_type == PieceType.KING:
             return self._king_moves(row, col)
-        elif piece.piece_type == PieceType.PAWN:
+        if piece.piece_type == PieceType.PAWN:
             return self._pawn_moves(row, col, piece.color)
 
         return []
@@ -116,25 +187,18 @@ class Board:
 
         return moves
 
-
     def _rook_moves(self, row, col):
-        directions = [
-            (1, 0), (-1, 0), (0, 1), (0, -1)
-        ]
-        return self._linear_moves(row, col, directions)
+        return self._linear_moves(row, col, [(1, 0), (-1, 0), (0, 1), (0, -1)])
 
     def _bishop_moves(self, row, col):
-        directions = [
-            (1, 1), (1, -1), (-1, 1), (-1, -1)
-        ]
-        return self._linear_moves(row, col, directions)
+        return self._linear_moves(row, col, [(1, 1), (1, -1), (-1, 1), (-1, -1)])
 
     def _queen_moves(self, row, col):
-        directions = [
-            (1, 0), (-1, 0), (0, 1), (0, -1),
-            (1, 1), (1, -1), (-1, 1), (-1, -1)
-        ]
-        return self._linear_moves(row, col, directions)
+        return self._linear_moves(
+            row,
+            col,
+            [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)],
+        )
 
     def _knight_moves(self, row, col):
         piece = self.get_piece(row, col)
@@ -142,7 +206,7 @@ class Board:
         moves = []
         offsets = [
             (2, 1), (2, -1), (-2, 1), (-2, -1),
-            (1, 2), (1, -2), (-1, 2), (-1, -2)
+            (1, 2), (1, -2), (-1, 2), (-1, -2),
         ]
         for d_row, d_col in offsets:
             r, c = row + d_row, col + d_col
@@ -151,13 +215,12 @@ class Board:
                     moves.append((r, c))
         return moves
 
-
     def _king_moves(self, row, col):
         piece = self.get_piece(row, col)
         color = piece.color
         moves = []
-        for d_row in [-1, 0, 1]:
-            for d_col in [-1, 0, 1]:
+        for d_row in (-1, 0, 1):
+            for d_col in (-1, 0, 1):
                 if d_row == 0 and d_col == 0:
                     continue
                 r, c = row + d_row, col + d_col
@@ -166,17 +229,16 @@ class Board:
                         moves.append((r, c))
         return moves
 
-
     def _pawn_moves(self, row, col, color):
         moves = []
         direction = 1 if color == Color.WHITE else -1
+
         one_step = row + direction
         if self.in_bounds(one_step, col) and self.is_empty(one_step, col):
             moves.append((one_step, col))
-
             start_row = 1 if color == Color.WHITE else 6
             two_step = row + 2 * direction
-            if row == start_row and self.is_empty(two_step, col):
+            if row == start_row and self.in_bounds(two_step, col) and self.is_empty(two_step, col):
                 moves.append((two_step, col))
 
         capture_row = row + direction
@@ -188,22 +250,18 @@ class Board:
 
         return moves
 
-
     def move_piece(self, from_row, from_col, to_row, to_col):
         piece = self.get_piece(from_row, from_col)
         if piece is None:
-            raise ValueError("Nu exista piesa pe pozitia de start.")
+            raise ValueError("No piece at start square")
 
         legal_moves = self.get_legal_moves(from_row, from_col)
         if (to_row, to_col) not in legal_moves:
-            raise ValueError("Mutare ilegala pentru piesa selectata.")
+            raise ValueError("Illegal move for selected piece")
 
         dest_piece = self.get_piece(to_row, to_col)
         if dest_piece is not None and dest_piece.color == piece.color:
-            raise ValueError("Nu poti muta pe o piesa de aceeasi culoare.")
+            raise ValueError("Cannot move onto same color piece")
 
         self.set_piece(to_row, to_col, piece)
         self.set_piece(from_row, from_col, None)
-
-
-
