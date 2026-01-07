@@ -194,13 +194,7 @@ class ChessGame:
         piece = info["piece"]
         captured = info["captured"]
 
-        current_to_piece = self.board.get_piece(to_row, to_col)
-
-        if info["promoted_from"] is not None:
-            self.board.set_piece(from_row, from_col, piece)
-        else:
-            self.board.set_piece(from_row, from_col, piece)
-
+        self.board.set_piece(from_row, from_col, piece)
         self.board.set_piece(to_row, to_col, captured)
 
         if info["en_passant"]:
@@ -318,6 +312,38 @@ class ChessGame:
             if (to_row, to_col) == self._starting_rook_square(enemy, "Q"):
                 self.castle_rights[enemy]["Q"] = False
 
+    def snapshot(self):
+        grid_copy = [[None for _ in range(8)] for _ in range(8)]
+        for r in range(8):
+            for c in range(8):
+                p = self.board.get_piece(r, c)
+                if p is None:
+                    grid_copy[r][c] = None
+                else:
+                    grid_copy[r][c] = Piece(p.piece_type, p.color)
+        rights_copy = {
+            Color.WHITE: {"K": self.castle_rights[Color.WHITE]["K"], "Q": self.castle_rights[Color.WHITE]["Q"]},
+            Color.BLACK: {"K": self.castle_rights[Color.BLACK]["K"], "Q": self.castle_rights[Color.BLACK]["Q"]},
+        }
+        ep = None if self.en_passant_target is None else (self.en_passant_target[0], self.en_passant_target[1])
+        return {
+            "grid": grid_copy,
+            "current_player": self.current_player,
+            "history_len": len(self.history),
+            "en_passant_target": ep,
+            "castle_rights": rights_copy,
+        }
+
+    def restore(self, snap):
+        for r in range(8):
+            for c in range(8):
+                self.board.set_piece(r, c, snap["grid"][r][c])
+        self.current_player = snap["current_player"]
+        self.en_passant_target = snap["en_passant_target"]
+        self.castle_rights = snap["castle_rights"]
+        if len(self.history) > snap["history_len"]:
+            self.history = self.history[:snap["history_len"]]
+
     def move(self, from_square: str, to_square: str):
         to_sq, promo_type = self._parse_to_square(to_square)
         from_row, from_col = self.algebraic_to_coords(from_square)
@@ -332,9 +358,7 @@ class ChessGame:
         if not self._is_legal_after_king_safety(from_row, from_col, to_row, to_col, self.current_player, promotion_piece_type=promo_type):
             raise ValueError("Illegal move")
 
-        prev_en_passant = self.en_passant_target
         info = self._apply_move_on_board(from_row, from_col, to_row, to_col, promotion_piece_type=promo_type)
-
         captured = info["captured"]
         self._update_castle_rights_on_move(piece, from_row, from_col, to_row, to_col, captured)
 
@@ -344,7 +368,15 @@ class ChessGame:
             if to_col == from_col and to_row == from_row + 2 * direction:
                 self.en_passant_target = (from_row + direction, from_col)
 
-        mv = Move(from_square, to_square, piece, captured=captured, promotion=(promo_type.value if promo_type else None), en_passant=info["en_passant"], castling=info["castling"])
+        mv = Move(
+            from_square,
+            to_square,
+            piece,
+            captured=captured,
+            promotion=(promo_type.value if promo_type else None),
+            en_passant=info["en_passant"],
+            castling=info["castling"],
+        )
         self.history.append(mv)
 
         opponent = Color.BLACK if self.current_player == Color.WHITE else Color.WHITE

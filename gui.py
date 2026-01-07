@@ -1,8 +1,10 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 
 from game import ChessGame
-from pieces import Color, PieceType, Piece
+from pieces import Color
+from ai import ChessAI
+from pgn_tools import save_pgn_like, load_pgn_like
 
 
 UNICODE_MAP = {
@@ -36,6 +38,10 @@ class ChessGUI:
         self.turn_var = tk.StringVar()
         self.info_var = tk.StringVar()
 
+        self.ai_enabled = tk.BooleanVar(value=False)
+        self.ai_side = tk.StringVar(value="BLACK")
+        self.ai_depth = tk.IntVar(value=3)
+
         top = tk.Frame(root)
         top.pack(side=tk.TOP, fill=tk.X)
 
@@ -62,12 +68,25 @@ class ChessGUI:
                 self.buttons[r][c] = btn
 
         control = tk.Frame(root)
-        control.pack(side=tk.TOP, fill=tk.X, padx=10, pady=8)
+        control.pack(side=tk.TOP, fill=tk.X, padx=10, pady=6)
 
         tk.Button(control, text="New Game", command=self.new_game).pack(side=tk.LEFT)
         tk.Button(control, text="Reset Selection", command=self.reset_selection).pack(side=tk.LEFT, padx=8)
+        tk.Button(control, text="Save", command=self.save_game).pack(side=tk.LEFT, padx=8)
+        tk.Button(control, text="Load", command=self.load_game).pack(side=tk.LEFT, padx=8)
+
+        tk.Label(control, text="AI").pack(side=tk.LEFT, padx=10)
+        tk.Checkbutton(control, variable=self.ai_enabled, command=self.on_ai_toggle).pack(side=tk.LEFT)
+        tk.Label(control, text="Side").pack(side=tk.LEFT, padx=6)
+        tk.OptionMenu(control, self.ai_side, "WHITE", "BLACK").pack(side=tk.LEFT)
+        tk.Label(control, text="Depth").pack(side=tk.LEFT, padx=6)
+        tk.OptionMenu(control, self.ai_depth, 1, 2, 3, 4).pack(side=tk.LEFT)
+        tk.Button(control, text="AI Move", command=self.ai_move).pack(side=tk.LEFT, padx=8)
 
         self.refresh()
+
+    def on_ai_toggle(self):
+        self.maybe_ai_autoplay()
 
     def new_game(self):
         self.game = ChessGame()
@@ -160,7 +179,90 @@ class ChessGUI:
         self.root.wait_window(win)
         return chosen["v"]
 
+    def current_ai_color(self):
+        if not self.ai_enabled.get():
+            return None
+        side = self.ai_side.get().upper()
+        return Color.WHITE if side == "WHITE" else Color.BLACK
+
+    def maybe_ai_autoplay(self):
+        ai_color = self.current_ai_color()
+        if ai_color is None:
+            return
+        if self.game.get_status_for(self.game.current_player) in ("checkmate", "stalemate"):
+            return
+        if self.game.current_player == ai_color:
+            self.ai_move()
+
+    def ai_move(self):
+        ai_color = self.current_ai_color()
+        if ai_color is None:
+            self.info_var.set("AI disabled")
+            return
+        if self.game.current_player != ai_color:
+            self.info_var.set("Not AI turn")
+            return
+        if self.game.get_status_for(self.game.current_player) in ("checkmate", "stalemate"):
+            return
+
+        ai = ChessAI(depth=self.ai_depth.get())
+        best = ai.choose_move(self.game)
+        if best is None:
+            self.info_var.set("AI has no moves")
+            return
+
+        f, t = best
+        try:
+            in_check, status = self.game.move(f, t)
+            msg = ""
+            if in_check:
+                msg = "Check"
+            if status == "checkmate":
+                msg = "Checkmate"
+            elif status == "stalemate":
+                msg = "Stalemate"
+            self.info_var.set(msg)
+            self.selected = None
+            self.refresh()
+            if status in ("checkmate", "stalemate"):
+                messagebox.showinfo("Game Over", f"{status}")
+            else:
+                self.root.after(50, self.maybe_ai_autoplay)
+        except Exception as e:
+            self.info_var.set(str(e))
+            self.refresh()
+
+    def save_game(self):
+        path = filedialog.asksaveasfilename(defaultextension=".pgn", filetypes=[("PGN-like", "*.pgn"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            save_pgn_like(self.game, path)
+            self.info_var.set("Saved")
+        except Exception as e:
+            self.info_var.set(str(e))
+
+    def load_game(self):
+        path = filedialog.askopenfilename(filetypes=[("PGN-like", "*.pgn"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            self.game = load_pgn_like(path)
+            self.reset_selection()
+            self.refresh()
+            self.info_var.set("Loaded")
+            self.root.after(50, self.maybe_ai_autoplay)
+        except Exception as e:
+            self.info_var.set(str(e))
+
     def on_square_click(self, r, c):
+        if self.game.get_status_for(self.game.current_player) in ("checkmate", "stalemate"):
+            return
+
+        ai_color = self.current_ai_color()
+        if ai_color is not None and self.game.current_player == ai_color:
+            return
+
         piece = self.game.board.get_piece(r, c)
 
         if self.selected is None:
@@ -217,6 +319,8 @@ class ChessGUI:
 
             if status in ("checkmate", "stalemate"):
                 messagebox.showinfo("Game Over", f"{status}")
+            else:
+                self.root.after(50, self.maybe_ai_autoplay)
         except Exception as e:
             self.info_var.set(str(e))
             self.refresh()
