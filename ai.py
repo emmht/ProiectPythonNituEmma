@@ -10,9 +10,26 @@ PIECE_VALUE = {
     PieceType.QUEEN: 900,
     PieceType.KING: 20000,
 }
+"""
+Dictionar care asociaza fiecarei piese o valoare numerica.
+
+Valorile sunt folosite pentru evaluarea materialului pe tabla:
+- valori pozitive favorizeaza albul
+- valori negative favorizeaza negrul (aplicate ulterior)
+"""
 
 
 def evaluate_material(game) -> int:
+    """
+    Evalueaza pozitia curenta a jocului pe baza materialului.
+
+    Se parcurge intreaga tabla si se aduna valorile pieselor:
+    - piesele albe adauga scor
+    - piesele negre scad scor
+
+    :param game: instanta ChessGame
+    :return: scorul material al pozitiei (int)
+    """
     score = 0
     for r in range(8):
         for c in range(8):
@@ -25,10 +42,32 @@ def evaluate_material(game) -> int:
 
 
 class ChessAI:
+    """
+    Clasa care implementeaza un adversar AI pentru sah.
+
+    AI-ul foloseste algoritmul minimax cu alpha-beta pruning
+    pentru a cauta cea mai buna mutare posibila.
+    """
+
     def __init__(self, depth: int = 3):
+        """
+        Initializeaza AI-ul cu o anumita adancime de cautare.
+
+        :param depth: cate mutari inainte analizeaza AI-ul
+        """
         self.depth = max(1, int(depth))
 
     def choose_move(self, game):
+        """
+        Alege cea mai buna mutare pentru jucatorul curent.
+
+        Se genereaza toate mutarile legale, se ordoneaza
+        astfel incat capturile si promovarile sa fie evaluate primele,
+        apoi se aplica minimax pentru fiecare mutare.
+
+        :param game: instanta ChessGame
+        :return: tuplu (from_square, to_square) sau None daca nu exista mutari
+        """
         color = game.current_player
         best = None
         best_score = -math.inf if color == Color.WHITE else math.inf
@@ -44,6 +83,7 @@ class ChessAI:
             cap_value = 0 if cap is None else PIECE_VALUE[cap.piece_type]
             promo_value = 0 if promo is None else PIECE_VALUE[promo]
             ordered.append((cap_value + promo_value, fp, tp, promo))
+
         ordered.sort(reverse=True, key=lambda x: x[0])
 
         for _, fp, tp, promo in ordered:
@@ -72,6 +112,16 @@ class ChessAI:
         return best
 
     def _terminal_score(self, game, depth):
+        """
+        Returneaza scorul pentru o pozitie terminala.
+
+        - checkmate: scor foarte mare negativ (pierdere)
+        - stalemate: scor neutru
+
+        :param game: instanta ChessGame
+        :param depth: adancimea ramasa
+        :return: scor int sau None daca pozitia nu este terminala
+        """
         status = game.get_status_for(game.current_player)
         if status == "checkmate":
             return -1000000 + (self.depth - depth)
@@ -80,9 +130,22 @@ class ChessAI:
         return None
 
     def _minimax(self, game, depth: int, alpha: float, beta: float) -> int:
+        """
+        Algoritmul minimax cu alpha-beta pruning.
+
+        Simuleaza mutari alternative pentru ambii jucatori
+        si elimina ramurile care nu pot influenta rezultatul final.
+
+        :param game: instanta ChessGame
+        :param depth: adancimea ramasa de cautare
+        :param alpha: cel mai bun scor garantat pentru maximizator
+        :param beta: cel mai bun scor garantat pentru minimizator
+        :return: scorul evaluat al pozitiei
+        """
         term = self._terminal_score(game, depth)
         if term is not None:
             return term
+
         if depth == 0:
             return evaluate_material(game)
 

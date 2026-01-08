@@ -21,10 +21,35 @@ UNICODE_MAP = {
     "n": "♞",
     "p": "♟",
 }
+"""
+Dictionar care mapeaza simbolurile interne ale pieselor (K, q, etc.)
+catre simboluri Unicode pentru afisare in interfata grafica.
+"""
 
 
 class ChessGUI:
+    """
+    Interfata grafica pentru jocul de sah folosind Tkinter.
+
+    Se ocupa de:
+    - desenarea tablei si pieselor
+    - selectarea pieselor cu mouse-ul
+    - evidentierea mutarilor legale
+    - aplicarea mutarilor in engine (ChessGame)
+    - afisarea statusului (check, checkmate, stalemate)
+    - salvare/incarcare fisier (PGN-like)
+    - control AI (pornit/oprit, side, depth, mutare AI)
+    """
+
     def __init__(self, root: tk.Tk):
+        """
+        Construieste interfata:
+        - zona de status (Turn/Status/Mesaje)
+        - tabla 8x8 din butoane
+        - zona de control (New/Reset/Save/Load/AI)
+
+        :param root: fereastra principala Tkinter
+        """
         self.root = root
         self.root.title("Chess")
 
@@ -86,14 +111,24 @@ class ChessGUI:
         self.refresh()
 
     def on_ai_toggle(self):
+        """
+        Este apelata cand se bifeaza/debifeaza AI-ul.
+        Daca AI-ul este activ si este randul lui, poate muta automat.
+        """
         self.maybe_ai_autoplay()
 
     def new_game(self):
+        """
+        Reseteaza jocul complet la pozitia initiala.
+        """
         self.game = ChessGame()
         self.reset_selection()
         self.refresh()
 
     def reset_selection(self):
+        """
+        Sterge selectia curenta si toate highlight-urile pentru mutari.
+        """
         self.selected = None
         self.legal_map = {}
         self.legal_targets = set()
@@ -101,15 +136,35 @@ class ChessGUI:
         self.refresh()
 
     def piece_to_text(self, piece):
+        """
+        Converteste o piesa in text pentru afisare pe buton.
+        Foloseste UNICODE_MAP daca exista.
+
+        :param piece: Piece sau None
+        :return: string afisabil in GUI
+        """
         if piece is None:
             return ""
         return UNICODE_MAP.get(piece.symbol, piece.symbol)
 
     def square_colors(self, r, c):
+        """
+        Returneaza culoarea de fundal pentru un patrat,
+        alternand intre patrate deschise si inchise.
+
+        :return: cod hex pentru culoare
+        """
         light = (r + c) % 2 == 0
         return "#EEEED2" if light else "#769656"
 
     def refresh(self):
+        """
+        Re-deseneaza intreaga interfata:
+        - recalculeaza mutarile legale
+        - actualizeaza textele Turn/Status
+        - actualizeaza piesele pe tabla
+        - aplica highlight pentru selectie si mutari legale
+        """
         self.rebuild_legal_cache()
 
         turn = "WHITE" if self.game.current_player == Color.WHITE else "BLACK"
@@ -139,6 +194,16 @@ class ChessGUI:
             self.buttons[tr][tc].configure(bg="#F6F669", activebackground="#F6F669")
 
     def rebuild_legal_cache(self):
+        """
+        Construieste un cache cu mutarile legale pentru jucatorul curent.
+
+        legal_map:
+        - cheie: (from_row, from_col)
+        - valoare: lista de (to_row, to_col) si promovare posibila
+
+        legal_targets:
+        - set de patrate tinta pentru piesa selectata (pentru highlight)
+        """
         self.legal_map = {}
         all_moves = self.game.get_all_legal_moves(self.game.current_player)
         for (from_pos, to_pos, promo) in all_moves:
@@ -150,11 +215,19 @@ class ChessGUI:
             self.legal_targets = set(tp for (tp, _promo) in self.legal_map.get(self.selected, []))
 
     def coords_to_alg(self, r, c):
+        """
+        Converteste coordonate interne (row, col) in notatie algebraica (ex: e2).
+        """
         file = chr(ord("a") + c)
         rank = str(r + 1)
         return file + rank
 
     def ask_promotion(self):
+        """
+        Afiseaza o fereastra mica pentru a alege piesa de promovare.
+
+        :return: una dintre literele "Q", "R", "B", "N" sau None daca se inchide
+        """
         win = tk.Toplevel(self.root)
         win.title("Promotion")
         win.transient(self.root)
@@ -180,12 +253,22 @@ class ChessGUI:
         return chosen["v"]
 
     def current_ai_color(self):
+        """
+        Intoarce culoarea pentru care joaca AI-ul, daca AI este activ.
+
+        :return: Color.WHITE / Color.BLACK sau None daca AI este oprit
+        """
         if not self.ai_enabled.get():
             return None
         side = self.ai_side.get().upper()
         return Color.WHITE if side == "WHITE" else Color.BLACK
 
     def maybe_ai_autoplay(self):
+        """
+        Daca AI este activ si este randul lui, face o mutare automat.
+
+        Nu muta daca jocul este deja terminat (checkmate/stalemate).
+        """
         ai_color = self.current_ai_color()
         if ai_color is None:
             return
@@ -195,6 +278,14 @@ class ChessGUI:
             self.ai_move()
 
     def ai_move(self):
+        """
+        Face o mutare pentru AI, daca:
+        - AI este activ
+        - este randul AI-ului
+        - jocul nu este terminat
+
+        Alege mutarea cu minimax (ChessAI) si o aplica in engine.
+        """
         ai_color = self.current_ai_color()
         if ai_color is None:
             self.info_var.set("AI disabled")
@@ -233,6 +324,9 @@ class ChessGUI:
             self.refresh()
 
     def save_game(self):
+        """
+        Deschide un dialog de salvare si scrie jocul curent intr-un fisier PGN-like.
+        """
         path = filedialog.asksaveasfilename(defaultextension=".pgn", filetypes=[("PGN-like", "*.pgn"), ("All files", "*.*")])
         if not path:
             return
@@ -243,6 +337,9 @@ class ChessGUI:
             self.info_var.set(str(e))
 
     def load_game(self):
+        """
+        Deschide un dialog de incarcare si reface jocul dintr-un fisier PGN-like.
+        """
         path = filedialog.askopenfilename(filetypes=[("PGN-like", "*.pgn"), ("All files", "*.*")])
         if not path:
             return
@@ -256,6 +353,18 @@ class ChessGUI:
             self.info_var.set(str(e))
 
     def on_square_click(self, r, c):
+        """
+        Handler pentru click pe un patrat de pe tabla.
+
+        Comportament:
+        - daca jocul e terminat, nu face nimic
+        - daca e randul AI-ului, nu permite mutarea utilizatorului
+        - daca nu exista selectie, selecteaza o piesa a jucatorului curent
+        - daca exista selectie:
+          - click pe aceeasi piesa: deselect
+          - click pe alta piesa proprie: schimba selectia
+          - click pe patrat tinta: aplica mutarea (si gestioneaza promovarea)
+        """
         if self.game.get_status_for(self.game.current_player) in ("checkmate", "stalemate"):
             return
 
@@ -327,6 +436,10 @@ class ChessGUI:
 
 
 def run_gui():
+    """
+    Functie helper care porneste interfata grafica.
+    Creeaza fereastra principala si intra in loop-ul Tkinter.
+    """
     root = tk.Tk()
     ChessGUI(root)
     root.mainloop()
